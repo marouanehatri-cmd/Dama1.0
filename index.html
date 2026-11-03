@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dama Master — Universal Checkers Solver</title>
+<style>
+  :root{
+    --wood-light:#e8c79a; --wood-dark:#9c6b3f; --wood-border:#5d3f22;
+    --panel:#f6f1e7; --panel2:#fffdf8; --ink:#2a2118; --accent:#c0392b; --accent2:#1e7a46;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;background:linear-gradient(160deg,#efe6d5,#dcc9ac);color:var(--ink);min-height:100vh}
+  header{background:linear-gradient(90deg,#5d3f22,#8a5a2e);color:#f7ead2;padding:14px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  header h1{margin:0;font-size:22px;letter-spacing:.5px}
+  header .badge{background:#c0392b;color:#fff;border-radius:14px;padding:3px 12px;font-size:12px;font-weight:700}
+  header .sub{font-size:12px;opacity:.85}
+  .wrap{display:flex;gap:20px;padding:20px;flex-wrap:wrap;align-items:flex-start;justify-content:center}
+  .card{background:var(--panel);border:1px solid #d9c9a8;border-radius:12px;box-shadow:0 4px 14px rgba(60,40,10,.12);padding:14px}
+  /* Board */
+  .board-area{position:relative}
+  #board{display:grid;grid-template-columns:repeat(8,58px);grid-template-rows:repeat(8,58px);border:6px solid var(--wood-border);border-radius:8px;background:var(--wood-border);box-shadow:inset 0 0 0 2px #3a2712}
+  .sq{position:relative;display:flex;align-items:center;justify-content:center;user-select:none}
+  .sq.light{background:var(--wood-light)} .sq.dark{background:var(--wood-dark)}
+  .sq .coord{position:absolute;font-size:9px;font-weight:700;opacity:.55;color:#3a2712}
+  .sq .coord.f{bottom:1px;right:3px}.sq .coord.r{top:1px;left:3px}
+  .piece{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;cursor:grab;box-shadow:0 3px 6px rgba(0,0,0,.35);border:2px solid rgba(0,0,0,.25)}
+  .piece.w{background:radial-gradient(circle at 35% 30%,#ffffff,#d8cfc0 70%,#b5a893);color:#7a5a20}
+  .piece.b{background:radial-gradient(circle at 35% 30%,#5a5a5a,#222 70%,#000);color:#e8d39a}
+  .piece.dragging{opacity:.4}
+  .sq.sel::after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 4px #ffd54a;border-radius:2px}
+  .sq.target::before{content:"";position:absolute;width:18px;height:18px;border-radius:50%;background:rgba(255,213,74,.75);z-index:1;pointer-events:none}
+  .sq.lastmove{box-shadow:inset 0 0 0 3px rgba(30,122,70,.7)}
+  .sq.huffable::before{content:"";position:absolute;inset:6px;border-radius:50%;background:repeating-linear-gradient(45deg,rgba(192,57,43,.55) 0 6px,transparent 6px 12px);z-index:1}
+  #overlay{position:absolute;left:6px;top:6px;width:calc(100% - 12px);height:calc(100% - 12px);pointer-events:none;z-index:2}
+  #status{margin-top:10px;text-align:center;font-weight:600;min-height:24px}
+  /* Controls */
+  .controls{width:320px;display:flex;flex-direction:column;gap:12px}
+  .controls label{font-size:12px;font-weight:700;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;color:#6b5636}
+  select,button{font-family:inherit;font-size:14px;border-radius:8px;border:1px solid #c9b68d;background:var(--panel2);padding:8px 10px;cursor:pointer;color:var(--ink)}
+  button{font-weight:600;transition:.15s}
+  button:hover{filter:brightness(.95)}
+  button.primary{background:var(--accent);color:#fff;border-color:#922b20}
+  button.green{background:var(--accent2);color:#fff;border-color:#14562f}
+  button.gray{background:#d9cdb4}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .row button{flex:1;min-width:90px}
+  .slider{display:flex;align-items:center;gap:10px}
+  .slider input{flex:1}
+  .slider .val{font-weight:800;font-size:18px;width:30px;text-align:center;color:var(--accent)}
+  .toggle{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid #c9b68d;border-radius:8px;padding:8px 10px}
+  .switch{position:relative;width:46px;height:24px;flex:none}
+  .switch input{opacity:0;width:0;height:0}
+  .slider-ui{position:absolute;inset:0;background:#c0392b;border-radius:24px;transition:.2s;cursor:pointer}
+  .slider-ui::before{content:"";position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:3px;left:3px;transition:.2s}
+  .switch input:checked + .slider-ui{background:#1e7a46}
+  .switch input:checked + .slider-ui::before{transform:translateX(22px)}
+  .helptext{font-size:11px;color:#7a6a4a;line-height:1.45;margin-top:4px}
+  .banner{background:#fff3cd;border:1px solid #e6c96a;border-radius:8px;padding:10px;font-size:13px;line-height:1.5}
+  .banner.strong{background:#fde2df;border-color:#e39a90}
+  /* Analysis */
+  .analysis{width:340px;max-height:78vh;display:flex;flex-direction:column}
+  .analysis h2{margin:0 0 6px;font-size:16px}
+  .stats{font-size:12px;color:#6b5636;margin-bottom:8px}
+  .movelist{overflow-y:auto;border:1px solid #d9c9a8;border-radius:8px;background:var(--panel2);flex:1}
+  .mv{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #eee5d2;cursor:pointer;font-size:13px}
+  .mv:hover{background:#fdf6e5}
+  .mv.active{background:#fff0c2}
+  .mv .n{font-weight:800;width:22px;color:#9a8a6a;font-size:11px}
+  .mv .alg{flex:1;font-weight:600;font-variant-numeric:tabular-nums}
+  .mv .caps{background:#c0392b;color:#fff;border-radius:10px;font-size:10px;padding:1px 7px;font-weight:700}
+  .mv .ev{font-weight:800;font-variant-numeric:tabular-nums}
+  .mv .ev.win{color:var(--accent2)} .mv .ev.loss{color:var(--accent)}
+  .best-badge{background:linear-gradient(90deg,#f4c531,#e8a020);color:#4a3405;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:800;letter-spacing:.5px}
+  footer{padding:10px;text-align:center;font-size:11px;color:#8a7a5a}
+</style>
+</head>
+<body>
+<header>
+  <h1>♛ Dama Master</h1>
+  <span class="badge">Moroccan Dama Solver</span>
+  <span class="sub">Mandatory capture · Maximum capture · Flying kings · Single-file engine</span>
+</header>
+
+<div class="wrap">
+  <!-- BOARD -->
+  <div class="card board-area">
+    <div style="position:relative">
+      <div id="board"></div>
+      <svg id="overlay" viewBox="0 0 8 8"></svg>
+    </div>
+    <div id="status"></div>
+    <div class="helptext" style="text-align:center">Drag & drop or click a piece then a highlighted target. Click a listed move to preview its path.</div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="card controls">
+    <div>
+      <label>Variant</label>
+      <select id="variant" style="width:100%">
+        <option value="moroccan" selected>Moroccan Dama (max-capture rule)</option>
+        <option value="international">International Draughts (any capture)</option>
+      </select>
+    </div>
+    <div class="toggle">
+      <span style="font-size:13px;font-weight:700">Captures mandatory</span>
+      <label class="switch"><input type="checkbox" id="mandatory" checked><span class="slider-ui"></span></label>
+    </div>
+    <div class="helptext" id="mandHelp">ON: a capture must be played (and the longest one in Moroccan rules). OFF: a player may <b>ignore</b> a capture — then the opponent may <b>huff</b>: remove the piece that should have taken.</div>
+    <div>
+      <label>Game mode</label>
+      <select id="mode" style="width:100%">
+        <option value="2p" selected>Analysis board (2 players)</option>
+        <option value="vsB">Play vs Engine — you are White</option>
+        <option value="vsW">Play vs Engine — you are Black</option>
+      </select>
+    </div>
+    <div>
+      <label>Who starts</label>
+      <select id="startSide" style="width:100%">
+        <option value="1" selected>White</option>
+        <option value="-1">Black</option>
+      </select>
+    </div>
+    <div>
+      <label>Engine depth</label>
+      <div class="slider">
+        <input type="range" id="depth" min="1" max="15" value="8">
+        <span class="val" id="depthVal">8</span>
+      </div>
+    </div>
+    <div class="row">
+      <button class="green" id="btnNew">New Game</button>
+      <button class="gray" id="btnStart">Starting Position</button>
+    </div>
+    <div class="row">
+      <button class="primary" id="btnAnalyze">Analyze</button>
+      <button class="gray" id="btnHint">Hint</button>
+    </div>
+    <div class="row">
+      <button class="gray" id="btnUndo">Undo</button>
+      <button class="gray" id="btnClear">Clear Board</button>
+    </div>
+    <div class="row">
+      <button class="gray" id="btnEdit">Edit: OFF</button>
+      <button class="gray" id="btnTest">Test Position</button>
+    </div>
+    <div id="huffBox"></div>
+  </div>
+
+  <!-- ANALYSIS -->
+  <div class="card analysis">
+    <h2>⚖️ Possibilities</h2>
+    <div class="stats" id="stats"></div>
+    <div class="movelist" id="movelist"></div>
+  </div>
+</div>
+<footer>Dama Master — Universal Checkers Solver · Moroccan Dama rules · engine.js logic embedded (minimax + α/β) · all computation local</footer>
+
+<script>
+"use strict";
+/* ================= engine.js — rules (verified) ================= */
+const SIZE = 8, DIAGS = [[-1,-1],[-1,1],[1,-1],[1,1]];
+const inside = (r,c) => r>=0 && r<SIZE && c>=0 && c<SIZE;
+const owner = v => v>0 ? 1 : v<0 ? -1 : 0;
+const isKing = v => Math.abs(v)===2;
+const cloneBoard = b => b.map(r => r.slice());
+
+/* getAllCaptures(board,r,c,player): all maximal capture sequences via recursion+backtracking.
+   Returns [{path:[(r,c)...], captured:[(r,c)...], finalBoard}] */
+function getAllCaptures(b, r, c, player){
+  const piece = b[r][c], results = [];
+  const base = cloneBoard(b); base[r][c] = 0;            // piece leaves origin immediately (allows return jumps)
+  function emit(path, captured){
+    const fb = cloneBoard(base);
+    for(const [x,y] of captured) fb[x][y] = 0;
+    const [er,ec] = path[path.length-1];
+    let fp = piece;
+    if(!isKing(piece)){
+      if(piece===1 && er===0) fp = 2;                    // promotion
+      else if(piece===-1 && er===SIZE-1) fp = -2;
+    }
+    fb[er][ec] = fp;
+    results.push({path:[[r,c],...path], captured:captured.slice(), finalBoard:fb});
+  }
+  function dfs(board, cr, cc, path, captured, king){
+    let extended = false;
+    if(!king){
+      for(const [dr,dc] of DIAGS){                       // men capture forward AND backward
+        const mr=cr+dr, mc=cc+dc, lr=cr+2*dr, lc=cc+2*dc;
+        if(!inside(lr,lc)) continue;
+        const mid = board[mr][mc];
+        if(mid!==0 && owner(mid)===-player && board[lr][lc]===0){
+          if(captured.some(([x,y])=>x===mr&&y===mc)) continue;
+          extended = true;
+          const nb = cloneBoard(board); nb[mr][mc] = 0;
+          path.push([lr,lc]); captured.push([mr,mc]);
+          const promotes = (player===1 && lr===0) || (player===-1 && lr===SIZE-1);
+          if(promotes) emit(path, captured);             // promotion ends turn immediately
+          else dfs(nb, lr, lc, path, captured, false);
+          path.pop(); captured.pop();                    // backtrack
+        }
+      }
+    } else {
+      for(const [dr,dc] of DIAGS){                       // flying king
+        let er=cr+dr, ec=cc+dc;
+        while(inside(er,ec) && board[er][ec]===0){ er+=dr; ec+=dc; }
+        if(!inside(er,ec)) continue;
+        if(owner(board[er][ec])!==-player) continue;
+        if(captured.some(([x,y])=>x===er&&y===ec)) continue;   // no double-capture of same piece
+        let lr=er+dr, lc=ec+dc;
+        while(inside(lr,lc) && board[lr][lc]===0){       // may land on ANY empty square beyond
+          extended = true;
+          path.push([lr,lc]); captured.push([er,ec]);
+          dfs(board, lr, lc, path, captured, true);      // captured piece stays on board (blocks line)
+          path.pop(); captured.pop();
+          lr+=dr; lc+=dc;
+        }
+      }
+    }
+    if(!extended && captured.length>0) emit(path, captured);
+  }
+  dfs(base, r, c, [], [], isKing(piece));
+  return results;
+}
+
+/* findMaxCaptureLength(board, player) — the MAX capture rule */
+function findMaxCaptureLength(b, player){
+  let max = 0;
+  for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){
+    if(owner(b[r][c])!==player) continue;
+    for(const cap of getAllCaptures(b,r,c,player))
+      if(cap.captured.length>max) max = cap.captured.length;
+  }
+  return max;
+}
+
+/* getAllMoves(board, player, rules) */
+function getAllMoves(b, player, rules){
+  rules = rules || {maxCapture:true, mandatory:true};
+  const caps = [];
+  for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){
+    if(owner(b[r][c])!==player) continue;
+    for(const cap of getAllCaptures(b,r,c,player))
+      caps.push({from:[r,c], to:cap.path[cap.path.length-1], path:cap.path,
+                 captured:cap.captured, finalBoard:cap.finalBoard, isCapture:true});
+  }
+  if(caps.length && rules.mandatory){
+    if(rules.maxCapture){
+      const mx = Math.max(...caps.map(m=>m.captured.length));
+      return caps.filter(m=>m.captured.length===mx);
+    }
+    return caps;
+  }
+  const moves = caps;                                     // optional-capture mode: captures included too
+  for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){
+    const v = b[r][c];
+    if(owner(v)!==player) continue;
+    if(isKing(v)){
+      for(const [dr,dc] of DIAGS){
+        let nr=r+dr, nc=c+dc;
+        while(inside(nr,nc) && b[nr][nc]===0){
+          const fb = cloneBoard(b); fb[r][c]=0; fb[nr][nc]=v;
+          moves.push({from:[r,c], to:[nr,nc], path:[[r,c],[nr,nc]], captured:[], finalBoard:fb, isCapture:false});
+          nr+=dr; nc+=dc;
+        }
+      }
+    } else {
+      const fwd = v===1 ? -1 : 1;
+      for(const dc of [-1,1]){
+        const nr=r+fwd, nc=c+dc;
+        if(inside(nr,nc) && b[nr][nc]===0){
+          const fb = cloneBoard(b); fb[r][c]=0;
+          let np=v;
+          if(v===1 && nr===0) np=2; else if(v===-1 && nr===SIZE-1) np=-2;
+          fb[nr][nc]=np;
+          moves.push({from:[r,c], to:[nr,nc], path:[[r,c],[nr,nc]], captured:[], finalBoard:fb, isCapture:false});
+        }
+      }
+    }
+  }
+  return moves;
+}
+
+/* evaluation (White-positive) */
+function evaluate(b){
+  let s = 0;
+  for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){
+    const v = b[r][c]; if(!v) continue;
+    let val;
+    if(isKing(v)) val = 300;
+    else {
+      val = 100 + (v===1 ? (6-r) : (r-1))*4;
+      if(c>=2 && c<=5) val += 4;
+    }
+    s += (v>0?1:-1)*val;
+  }
+  return s;
+}
+
+/* minimax with alpha-beta. Returns score (White-positive). */
+function minimax(b, depth, alpha, beta, player, rules){
+  const moves = getAllMoves(b, player, rules);
+  if(!moves.length) return player===1 ? -100000-depth : 100000+depth;  // side to move loses
+  if(depth<=0) return evaluate(b);
+  if(player===1){
+    let best = -Infinity;
+    for(const m of moves){
+      best = Math.max(best, minimax(m.finalBoard, depth-1, alpha, beta, -player, rules));
+      alpha = Math.max(alpha, best);
+      if(beta<=alpha) break;
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for(const m of moves){
+      best = Math.min(best, minimax(m.finalBoard, depth-1, alpha, beta, -player, rules));
+      if(beta<=alpha) break;
+    }
+    return best;
+  }
+}
+
+/* bestMove: full root search, returns {move, score} from the mover's perspective */
+function bestMove(b, player, depth, rules){
+  const moves = getAllMoves(b, player, rules);
+  if(!moves.length) return null;
+  let best = null, bestSc = player===1 ? -Infinity : Infinity;
+  for(const m of moves){
+    const sc = minimax(m.finalBoard, depth-1, -Infinity, Infinity, -player, rules);
+    if(player===1 ? sc>bestSc : sc<bestSc){ bestSc = sc; best = m; }
+  }
+  return {move:best, score:bestSc};
+}
+
+/* ================= game / UI state ================= */
+const FILES = "abcdefgh";
+const sqName = (r,c) => FILES[c] + (8-r);
+function emptyBoard(){ return Array.from({length:8},()=>Array(8).fill(0)); }
+function startingPosition(){
+  const b = emptyBoard();
+  for(let r=0;r<3;r++) for(let c=0;c<8;c++) if((r+c)%2===1) b[r][c] = -1;
+  for(let r=5;r<8;r++) for(let c=0;c<8;c++) if((r+c)%2===1) b[r][c] = 1;
+  return b;
+}
+function testPosition(){                                  // White king d4, Black men e5 & f6, White to move
+  const b = emptyBoard();
+  b[4][3] = 2;                                            // d4 = (row4, col3)
+  b[3][4] = -1;                                           // e5
+  b[2][5] = -1;                                           // f6
+  return b;
+}
+
+const S = {
+  board: startingPosition(),
+  turn: 1,
+  variant: 'moroccan',
+  mandatory: true,
+  mode: '2p',
+  depth: 8,
+  selected: null,
+  legal: [],                     // legal moves for S.turn
+  history: [],
+  analysis: null,                 // [{move, score}] sorted
+  previewPath: null,
+  lastMove: null,
+  editing: false,
+  engineBusy: false,
+  huff: null,                    // {side: player entitled to huff, offenders: [[r,c]...]}
+  huffClicking: false,
+  gameOver: null,                 // 1 | -1 | 'draw'
+};
+
+function rules(){
+  return { maxCapture: S.variant==='moroccan', mandatory: S.mandatory };
+}
+function computeLegal(){ S.legal = getAllMoves(S.board, S.turn, rules()); }
+function pushHistory(){
+  S.history.push({board: cloneBoard(S.board), turn: S.turn, huff: S.huff && JSON.parse(JSON.stringify(S.huff)), lastMove: S.lastMove});
+  if(S.history.length>200) S.history.shift();
+}
+
+/* engine side in current mode */
+function engineSide(){ return S.mode==='vsB' ? -1 : S.mode==='vsW' ? 1 : 0; }
+
+function applyMove(m){
+  pushHistory();
+  // huff detection (only meaningful when captures were ignorable)
+  const preMax = findMaxCaptureLength(S.board, S.turn);
+  const skipped = preMax > 0 && m.captured.length < preMax;
+  S.board = m.finalBoard;
+  S.lastMove = m;
+  S.selected = null; S.previewPath = null; S.huffClicking = false;
+  S.turn = -S.turn;
+  computeLegal();
+  S.gameOver = S.legal.length===0 ? -S.turn : null;       // side without moves loses
+  if(skipped && !S.mandatory){
+    // huffing: pieces of the side that just moved which had a capture available
+    const offenders = [];
+    const pre = S.history[S.history.length-1].board;      // board before the move
+    const movedSide = -S.turn;
+    for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+      if(owner(pre[r][c])===movedSide && getAllCaptures(pre,r,c,movedSide).length>0)
+        offenders.push([r,c]);
+    }
+    if(offenders.length) S.huff = {side: S.turn, offenders};
+  }
+  S.analysis = null;
+  render();
+  maybeEngineMove();
+}
+
+function maybeEngineMove(){
+  if(S.mode==='2p' || S.gameOver || S.turn !== engineSide()) { render(); return; }
+  S.engineBusy = true; render();
+  setTimeout(()=>{
+    const res = bestMove(S.board, S.turn, S.depth, rules());
+    S.engineBusy = false;
+    if(res && res.move){
+      // small delay for feel
+      applyMove(res.move);
+    } else render();
+  }, 60);
+}
+
+/* huffing: remove an offending piece */
+function doHuff(r,c){
+  if(!S.huff || !S.huffClicking) return;
+  if(!S.huff.offenders.some(([x,y])=>x===r&&y===c)) return;
+  pushHistory();
+  S.board[r][c] = 0;
+  S.huff = null; S.huffClicking = false;
+  computeLegal();
+  render();
+}
+function ignoreHuff(){ S.huff = null; S.huffClicking = false; render(); }
+
+/* ================= rendering ================= */
+const boardEl = document.getElementById('board');
+const overlayEl = document.getElementById('overlay');
+const statusEl = document.getElementById('status');
+const movelistEl = document.getElementById('movelist');
+const statsEl = document.getElementById('stats');
+const huffBoxEl = document.getElementById('huffBox');
+
+function moveNotation(m){
+  if(m.captured.length) return m.path.map(p=>sqName(p[0],p[1])).join('×') + ` (${m.captured.length} capture${m.captured.length>1?'s':''})`;
+  return sqName(m.from[0],m.from[1]) + '–' + sqName(m.to[0],m.to[1]);
+}
+function evalText(sc, turn){
+  const a = Math.abs(sc);
+  if(a>50000){
+    const win = sc>0 ? 1 : -1;
+    if(win===turn) return 'WIN'; else return 'LOSS';
+  }
+  const v = (sc/100).toFixed(1);
+  return (turn===1 ? (v>=0?'+':'') + v : (v<=0?'+':'') + (-v));
+}
+
+function render(){
+  // board
+  boardEl.innerHTML = '';
+  const targets = new Set();
+  if(S.selected!==null) for(const m of S.legal)
+    if(m.from[0]===S.selected[0] && m.from[1]===S.selected[1]) targets.add(m.to[0]*8+m.to[1]);
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+    const sq = document.createElement('div');
+    sq.className = 'sq ' + (((r+c)%2===0)?'light':'dark');
+    if(S.selected && S.selected[0]===r && S.selected[1]===c) sq.classList.add('sel');
+    if(targets.has(r*8+c)) sq.classList.add('target');
+    if(S.lastMove && S.lastMove.path.some(p=>p[0]===r&&p[1]===c)) sq.classList.add('lastmove');
+    if(S.huffClicking && S.huff && S.huff.offenders.some(([x,y])=>x===r&&y===c)) sq.classList.add('huffable');
+    if(c===0){ const co=document.createElement('span'); co.className='coord r'; co.textContent=(8-r); sq.appendChild(co); }
+    if(r===7){ const co=document.createElement('span'); co.className='coord f'; co.textContent=FILES[c]; sq.appendChild(co); }
+    const v = S.board[r][c];
+    if(v!==0){
+      const p = document.createElement('div');
+      p.className = 'piece ' + (v>0?'w':'b');
+      p.textContent = isKing(v) ? '♛' : '';
+      p.draggable = !S.editing && !S.gameOver && !S.engineBusy && owner(v)===S.turn && S.turn!==engineSide();
+      sq.appendChild(p);
+    }
+    sq.addEventListener('click', ()=> onSquareClick(r,c));
+    sq.addEventListener('dragover', e=> e.preventDefault());
+    sq.addEventListener('drop', e=> { e.preventDefault(); onDrop(r,c, +e.dataTransfer.getData('r'), +e.dataTransfer.getData('c')); });
+    boardEl.appendChild(sq);
+  }
+  // piece drag handlers (delegated)
+  boardEl.querySelectorAll('.piece').forEach(p=>{
+    p.addEventListener('dragstart', e=>{
+      const sq = p.parentElement;
+      const idx = [...boardEl.children].indexOf(sq);
+      const rr = Math.floor(idx/8), cc = idx%8;
+      e.dataTransfer.setData('r', rr); e.dataTransfer.setData('c', cc);
+      p.classList.add('dragging');
+      S.selected = [rr,cc]; renderSoon();
+    });
+    p.addEventListener('dragend', ()=>{ p.classList.remove('dragging'); renderSoon(); });
+  });
+  drawOverlay();
+  renderStatus();
+  renderHuff();
+  renderAnalysis();
+}
+let renderTimer=null;
+function renderSoon(){ clearTimeout(renderTimer); renderTimer=setTimeout(render,0); }
+
+function drawOverlay(){
+  let path = S.previewPath;
+  if(!path && S.analysis && S.analysis.length && S.analysis[0].move) path = S.analysis[0].move.path;
+  let svg = '';
+  if(path && path.length>1){
+    const pts = path.map(([r,c])=>[c+0.5, r+0.5]);
+    // captured marks
+    const mv = (S.previewPath && findMoveByPath(S.previewPath)) || (S.analysis && S.analysis.length ? S.analysis[0].move : null);
+    if(mv) for(const [r,c] of mv.captured)
+      svg += `<line x1="${c+0.2}" y1="${r+0.2}" x2="${c+0.8}" y2="${r+0.8}" stroke="#e74c3c" stroke-width="0.07"/><line x1="${c+0.8}" y1="${r+0.2}" x2="${c+0.2}" y2="${r+0.8}" stroke="#e74c3c" stroke-width="0.07"/>`;
+    let d = `M ${pts[0][0]} ${pts[0][1]}`;
+    for(let i=1;i<pts.length;i++) d += ` L ${pts[i][0]} ${pts[i][1]}`;
+    svg += `<path d="${d}" fill="none" stroke="#1e7a46" stroke-width="0.12" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
+    const [ex,ey] = pts[pts.length-1], [px,py] = pts[pts.length-2];
+    const ang = Math.atan2(ey-py, ex-px);
+    const a1 = ang + 2.5, a2 = ang - 2.5;
+    svg += `<path d="M ${ex} ${ey} L ${ex+0.42*Math.cos(a1)} ${ey+0.42*Math.sin(a1)} L ${ex+0.42*Math.cos(a2)} ${ey+0.42*Math.sin(a2)} Z" fill="#1e7a46" opacity="0.9"/>`;
+  }
+  overlayEl.innerHTML = svg;
+}
+function findMoveByPath(path){
+  if(!path) return null;
+  const key = p => p.map(q=>q.join(',')).join(';');
+  for(const m of S.legal) if(key(m.path)===key(path)) return m;
+  if(S.analysis) for(const a of S.analysis) if(a.move && key(a.move.path)===key(path)) return a.move;
+  return null;
+}
+
+function renderStatus(){
+  if(S.gameOver){
+    statusEl.innerHTML = S.gameOver===1 ? '🏆 <b>White wins!</b>' : '🏆 <b>Black wins!</b>';
+    return;
+  }
+  let t = (S.turn===1?'White':'Black') + ' to move';
+  if(S.turn===engineSide() && S.mode!=='2p') t += S.engineBusy ? ' — engine thinking…' : ' (engine)';
+  const mx = rules().mandatory ? findMaxCaptureLength(S.board, S.turn) : 0;
+  if(mx>0 && rules().mandatory) t += ` · ⚠️ capture forced (max ${mx})`;
+  statusEl.textContent = t;
+}
+
+function renderHuff(){
+  if(S.huff && S.turn===S.huff.side){
+    huffBoxEl.innerHTML = `
+      <div class="banner strong">
+        <b>Rule breach!</b> ${S.turn===1?'White':'Black'} may huff: the opponent ignored a capture.<br>
+        Decide: remove the offending piece, or ignore it.
+        <div class="row" style="margin-top:8px">
+          <button class="primary" id="btnHuffOn">Remove piece 🤏</button>
+          <button class="gray" id="btnHuffOff">Ignore</button>
+        </div>
+        ${S.huffClicking ? '<div style="margin-top:6px;font-size:12px"><b>Click the striped piece</b> to remove it.</div>' : ''}
+      </div>`;
+    document.getElementById('btnHuffOn').onclick = ()=>{ S.huffClicking = true; render(); };
+    document.getElementById('btnHuffOff').onclick = ignoreHuff;
+  } else huffBoxEl.innerHTML = '';
+}
+
+function renderAnalysis(){
+  if(S.analysis===null){
+    movelistEl.innerHTML = '<div style="padding:14px;color:#9a8a6a;font-size:13px">Press <b>Analyze</b> to list every possibility for the side to move, evaluated with minimax (α-β) at the chosen depth.</div>';
+    statsEl.textContent = '';
+    return;
+  }
+  const turn = S.analysisTurn;
+  const caps = S.analysis.filter(a=>a.move.captured.length>0).length;
+  const conts = S.analysis.reduce((s,a)=>s + (a.move.captured.length>1 ? a.move.captured.length-1 : 0), 0);
+  statsEl.innerHTML = `Total possibilities: <b>${S.analysis.length}</b> &nbsp;·&nbsp; capture lines: <b>${caps}</b> &nbsp;·&nbsp; extra capture continuations: <b>${conts}</b>`;
+  let html = '';
+  S.analysis.forEach((a,i)=>{
+    const ev = evalText(a.score, turn);
+    const cls = Math.abs(a.score)>50000 ? (a.score*turn>0?'win':'loss') : '';
+    html += `<div class="mv ${S.previewPath && a.move.path.map(p=>p.join(',')).join(';')===S.previewPath.map(p=>p.join(',')).join(';') ? 'active':''}" data-i="${i}">
+      <span class="n">${i+1}</span>
+      <span class="alg">${moveNotation(a.move)}</span>
+      ${a.move.captured.length?`<span class="caps">×${a.move.captured.length}</span>`:''}
+      <span class="ev ${cls}">${ev}</span>
+      ${i===0?'<span class="best-badge">BEST</span>':''}
+    </div>`;
+  });
+  movelistEl.innerHTML = html || '<div style="padding:14px;color:#9a8a6a">No legal moves.</div>';
+  movelistEl.querySelectorAll('.mv').forEach(el=>{
+    el.onclick = ()=>{
+      const a = S.analysis[+el.dataset.i];
+      S.previewPath = a.move.path;
+      drawOverlay();
+      movelistEl.querySelectorAll('.mv').forEach(x=>x.classList.remove('active'));
+      el.classList.add('active');
+    };
+  });
+}
+
+/* ================= interaction ================= */
+function onSquareClick(r,c){
+  if(S.editing){
+    pushHistory();
+    S.board[r][c] = ({0:1,1:2,2:-1,'-1':-2,'-2':0})[S.board[r][c]];
+    computeLegal(); render(); return;
+  }
+  if(S.gameOver) return;
+  if(S.huffClicking){ doHuff(r,c); return; }
+  if(S.turn===engineSide() && S.mode!=='2p') return;
+  const v = S.board[r][c];
+  if(S.selected && (r!==S.selected[0] || c!==S.selected[1])){
+    const mv = S.legal.find(m => m.from[0]===S.selected[0] && m.from[1]===S.selected[1]
+                             && m.to[0]===r && m.to[1]===c);
+    if(mv){ applyMove(mv); return; }
+  }
+  if(owner(v)===S.turn){
+    S.selected = (S.selected && S.selected[0]===r && S.selected[1]===c) ? null : [r,c];
+    S.previewPath = null;
+    render();
+  } else { S.selected = null; render(); }
+}
+function onDrop(r,c,fr,fc){
+  if(S.gameOver || S.editing) return;
+  if(S.turn===engineSide() && S.mode!=='2p') return;
+  const mv = S.legal.find(m => m.from[0]===fr && m.from[1]===fc && m.to[0]===r && m.to[1]===c);
+  S.selected = null;
+  if(mv) applyMove(mv); else render();
+}
+
+/* ================= controls wiring ================= */
+const $ = id => document.getElementById(id);
+$('depth').addEventListener('input', e=>{ S.depth = +e.target.value; $('depthVal').textContent = S.depth; });
+$('variant').addEventListener('change', e=>{ S.variant = e.target.value; S.analysis=null; computeLegal(); render(); });
+$('mandatory').addEventListener('change', e=>{
+  S.mandatory = e.target.checked;
+  S.analysis = null;
+  computeLegal(); render();
+});
+$('mode').addEventListener('change', e=>{
+  S.mode = e.target.value; S.analysis=null; S.engineBusy=false; computeLegal(); render(); maybeEngineMove();
+});
+$('startSide').addEventListener('change', e=>{
+  S.board = startingPosition(); S.turn = +e.target.value; S.selected=null; S.analysis=null;
+  S.history=[]; S.lastMove=null; S.huff=null; S.gameOver=null;
+  computeLegal(); render(); maybeEngineMove();
+});
+$('btnNew').onclick = ()=>{
+  S.board = startingPosition();
+  S.turn = +$('startSide').value;
+  S.selected=null; S.analysis=null; S.history=[]; S.lastMove=null; S.huff=null; S.huffClicking=false; S.gameOver=null; S.engineBusy=false;
+  computeLegal(); render(); maybeEngineMove();
+};
+$('btnStart').onclick = ()=>{ S.board = startingPosition(); S.turn=+$('startSide').value; S.selected=null; S.analysis=null; S.huff=null; S.huffClicking=false; S.gameOver=null; computeLegal(); render(); };
+$('btnClear').onclick = ()=>{ S.board = emptyBoard(); S.selected=null; S.analysis=null; S.huff=null; S.huffClicking=false; S.history=[]; S.lastMove=null; S.gameOver=null; computeLegal(); render(); };
+$('btnTest').onclick = ()=>{
+  S.board = testPosition(); S.turn = 1; S.selected=null; S.analysis=null; S.huff=null; S.huffClicking=false;
+  S.history=[]; S.lastMove=null; S.gameOver=null;
+  computeLegal(); render();
+  setTimeout(()=>{ $('btnAnalyze').click(); }, 50);
+};
+$('btnEdit').onclick = ()=>{ S.editing = !S.editing; $('btnEdit').textContent = 'Edit: ' + (S.editing?'ON':'OFF'); render(); };
+$('btnUndo').onclick = ()=>{
+  if(S.huffClicking){ S.huffClicking=false; render(); return; }
+  if(!S.history.length){ render(); return; }
+  // if engine just moved, undo two plies so human is back to move
+  let steps = (S.mode!=='2p' && S.turn!==engineSide() && S.history.length>1) ? 2 : 1;
+  while(steps-- > 0 && S.history.length){
+    const h = S.history.pop();
+    S.board = h.board; S.turn = h.turn; S.huff = h.huff; S.lastMove = h.lastMove;
+  }
+  S.selected=null; S.previewPath=null; S.analysis=null; S.huffClicking=false; S.gameOver=null; S.engineBusy=false;
+  computeLegal(); render();
+};
+$('btnAnalyze').onclick = ()=>{
+  if(S.gameOver){ render(); return; }
+  const turn = S.turn;
+  const moves = getAllMoves(S.board, turn, rules());
+  const list = moves.map(m => ({move: m, score: minimax(m.finalBoard, S.depth-1, -Infinity, Infinity, -turn, rules())}));
+  // sort: best for the side to move first
+  list.sort((a,b)=> turn===1 ? b.score-a.score : a.score-b.score);
+  S.analysis = list; S.analysisTurn = turn; S.previewPath = null;
+  render();
+};
+$('btnHint').onclick = ()=>{
+  if(S.gameOver){ render(); return; }
+  const res = bestMove(S.board, S.turn, Math.max(S.depth,6), rules());
+  if(res){ S.analysis = [{move:res.move, score:res.score}]; S.analysisTurn = S.turn; S.previewPath = res.move.path; render(); }
+};
+
+computeLegal();
+render();
+</script>
+</body>
+</html>
